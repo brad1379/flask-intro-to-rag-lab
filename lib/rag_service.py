@@ -50,46 +50,49 @@ STOPWORDS = {
 
 
 def tokenize(text: str) -> set[str]:
-    """Convert text into a set of searchable lowercase tokens.
+    """Convert text into a set of searchable lowercase tokens."""
+    words = re.findall(r"[a-z0-9']+", text.lower())
 
-    TODO:
-    - Lowercase the text.
-    - Extract word-like values.
-    - Remove leading/trailing apostrophes.
-    - Remove tokens with length <= 1.
-    - Remove tokens in STOPWORDS.
-    - Return a set of searchable terms.
-    """
-    # TODO: Replace this placeholder with your implementation.
-    return set()
+    tokens = set()
+    for word in words:
+        word = word.strip("'")
+        if len(word) <= 1:
+            continue
+        if word in STOPWORDS:
+            continue
+        tokens.add(word)
+
+    return tokens
 
 
 def document_search_text(document: dict[str, Any]) -> str:
-    """Combine searchable document fields into one text value.
+    """Combine searchable document fields into one text value."""
+    title = document.get("title", "")
+    category = document.get("category", "")
+    tags = " ".join(document.get("tags", []))
+    text = document.get("text", "")
 
-    TODO:
-    Include title, category, tags, and text.
-    """
-    # TODO: Replace this placeholder with your implementation.
-    return ""
+    return f"{title} {category} {tags} {text}"
 
 
 def score_document(query: str, document: dict[str, Any]) -> dict[str, Any]:
-    """Score a document using keyword overlap.
+    """Score a document using keyword overlap."""
+    query_tokens = tokenize(query)
+    document_tokens = tokenize(document_search_text(document))
+    title_tokens = tokenize(document.get("title", ""))
 
-    TODO:
-    - Tokenize the query.
-    - Tokenize the combined searchable document text.
-    - Tokenize the document title.
-    - Find matched terms between query tokens and document tokens.
-    - Add a small title boost: 0.5 for each query token found in the title.
-    - Return a dictionary with keys: document, score, matched_terms.
-    """
-    # TODO: Replace this placeholder with your implementation.
+    matched_terms = sorted(query_tokens & document_tokens)
+    score = len(matched_terms)
+
+    # Give a small boost when the query words show up in the title
+    for token in query_tokens:
+        if token in title_tokens:
+            score += 0.5
+
     return {
         "document": document,
-        "score": 0,
-        "matched_terms": [],
+        "score": score,
+        "matched_terms": matched_terms,
     }
 
 
@@ -99,55 +102,65 @@ def retrieve_context(
     limit: int = 2,
     minimum_score: float = 1.0,
 ) -> list[dict[str, Any]]:
-    """Select the most relevant documents for the query.
+    """Select the most relevant documents for the query."""
+    matches = []
+    for document in documents:
+        result = score_document(query, document)
+        if result["score"] >= minimum_score:
+            matches.append(result)
 
-    TODO:
-    - Score all documents.
-    - Keep only matches with score >= minimum_score.
-    - Sort by score from highest to lowest.
-    - Return only the top `limit` matches.
+    matches.sort(key=lambda match: match["score"], reverse=True)
 
-    The selected context must depend on the user's query. Do not return the same
-    hardcoded document for every request.
-    """
-    # TODO: Replace this placeholder with your implementation.
-    return []
+    return matches[:limit]
 
 
 def format_context(context_matches: list[dict[str, Any]]) -> str:
-    """Format retrieved documents into a context block for the prompt.
+    """Format retrieved documents into a context block for the prompt."""
+    if not context_matches:
+        return "No relevant context was found in the approved company documents."
 
-    TODO:
-    - If no matches exist, return a short no-context message.
-    - For each match, include Source ID, Title, Category, and Content.
-    - Separate document blocks clearly.
-    """
-    # TODO: Replace this placeholder with your implementation.
-    return ""
+    blocks = []
+    for match in context_matches:
+        document = match["document"]
+        block = (
+            f"Source ID: {document['id']}\n"
+            f"Title: {document['title']}\n"
+            f"Category: {document['category']}\n"
+            f"Content: {document['text']}"
+        )
+        blocks.append(block)
+
+    return "\n\n---\n\n".join(blocks)
 
 
 def build_prompt(query: str, context_matches: list[dict[str, Any]]) -> str:
-    """Build a structured prompt with instructions, context, question, and requirements.
+    """Build a structured prompt with instructions, context, question, and requirements."""
+    context = format_context(context_matches)
 
-    TODO:
-    The prompt should include these sections:
-    - Instructions
-    - Context
-    - Question
-    - Response requirements
+    prompt = f"""Instructions:
+You are a helpful internal assistant for company employees and developers.
+Use only the context provided below to answer the question.
+Do not invent policies, numbers, or details that are not supported by the context.
+If the context does not contain the answer, say that the approved documents do not have enough information.
 
-    The prompt should tell the model to use only the provided context and avoid
-    inventing unsupported details.
-    """
-    # TODO: Replace this placeholder with your implementation.
-    return ""
+Context:
+{context}
+
+Question:
+{query}
+
+Response requirements:
+- Answer clearly in a few sentences.
+- Only include information found in the context.
+- Mention the Source ID of any document you used.
+"""
+    return prompt
 
 
 def source_metadata(match: dict[str, Any]) -> dict[str, str]:
-    """Return source information that is safe to expose in the API response.
-
-    TODO:
-    Return only the document id and title.
-    """
-    # TODO: Replace this placeholder with your implementation.
-    return {}
+    """Return source information that is safe to expose in the API response."""
+    document = match["document"]
+    return {
+        "id": document["id"],
+        "title": document["title"],
+    }
